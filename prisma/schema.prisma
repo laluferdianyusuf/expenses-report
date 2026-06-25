@@ -1,0 +1,870 @@
+// =============================================================================
+// FMS Enterprise — Prisma Schema
+// Financial Management System | Multi-Tenant | Double-Entry Accounting
+// Database: PostgreSQL (Supabase)
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL") // Supabase connection pooling
+}
+
+// =============================================================================
+// ENUMS
+// =============================================================================
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum DeviceType {
+  IOS
+  ANDROID
+  TABLET
+  WEB
+}
+
+enum TransactionStatus {
+  DRAFT
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum ApprovalEntityType {
+  INCOME
+  EXPENSE
+}
+
+enum ApprovalAction {
+  SUBMIT
+  APPROVE
+  REJECT
+  CANCEL
+  RESUBMIT
+}
+
+enum BudgetPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  CUSTOM
+}
+
+enum BudgetAlertLevel {
+  NORMAL
+  WARNING_80
+  WARNING_90
+  OVER_BUDGET
+}
+
+enum TargetPeriod {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  CUSTOM
+}
+
+enum TargetStatus {
+  IN_PROGRESS
+  ACHIEVED
+  MISSED
+  CANCELLED
+}
+
+enum AuditAction {
+  LOGIN
+  LOGOUT
+  CREATE
+  UPDATE
+  DELETE
+  EXPORT
+  APPROVE
+  REJECT
+  SYNC
+  UPLOAD
+  VIEW
+}
+
+enum NotificationType {
+  TRANSACTION_REMINDER
+  INCOME_REMINDER
+  EXPENSE_REMINDER
+  BUDGET_WARNING
+  BUDGET_OVER
+  TARGET_REMINDER
+  TARGET_ACHIEVED
+  APPROVAL_REQUEST
+  APPROVAL_RESULT
+  REPORT_REMINDER
+  SYSTEM
+}
+
+enum NotificationChannel {
+  IN_APP
+  PUSH
+  EMAIL
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+}
+
+enum AttachmentEntityType {
+  INCOME
+  EXPENSE
+  USER_AVATAR
+  ORGANIZATION_LOGO
+  REPORT
+}
+
+enum UploadStatus {
+  PENDING
+  UPLOADING
+  COMPLETED
+  FAILED
+}
+
+enum ReportType {
+  DAILY
+  WEEKLY
+  MONTHLY
+  YEARLY
+  CASH_FLOW
+  INCOME
+  EXPENSE
+  BUDGET
+  FINANCIAL_TARGET
+  TRIAL_BALANCE
+  BALANCE_SHEET
+  PROFIT_LOSS
+  CUSTOM
+}
+
+enum ReportFormat {
+  PDF
+  EXCEL
+  CSV
+}
+
+enum ReportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum SyncStatus {
+  SYNCED
+  PENDING
+  CONFLICT
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum JournalSourceType {
+  INCOME
+  EXPENSE
+  MANUAL
+  ADJUSTMENT
+  OPENING_BALANCE
+}
+
+enum JournalStatus {
+  DRAFT
+  POSTED
+  VOIDED
+}
+
+// =============================================================================
+// CORE — ORGANIZATION & BRANCH
+// =============================================================================
+
+model Organization {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String    @db.VarChar(255)
+  email     String?   @db.VarChar(255)
+  phone     String?   @db.VarChar(50)
+  address   String?   @db.Text
+  logo      String?   @db.VarChar(500)
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  branches          Branch[]
+  users             User[]
+  incomeCategories  IncomeCategory[]
+  expenseCategories ExpenseCategory[]
+  incomes           Income[]
+  expenses          Expense[]
+  budgets           Budget[]
+  targets           Target[]
+  notifications     Notification[]
+  attachments       Attachment[]
+  approvalFlows     ApprovalFlow[]
+  approvalHistories ApprovalHistory[]
+  auditLogs         AuditLog[]
+  reports           Report[]
+  syncLogs          SyncLog[]
+  chartOfAccounts   ChartOfAccount[]
+  journalEntries    JournalEntry[]
+  journalDetails    JournalDetail[]
+  budgetHistories   BudgetHistory[]
+  userSessions      UserSession[]
+
+  @@index([deletedAt])
+  @@map("organizations")
+}
+
+model Branch {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(255)
+  address        String?  @db.Text
+  phone          String?  @db.VarChar(50)
+  email          String?  @db.VarChar(255)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  users        User[]
+  incomes      Income[]
+  expenses     Expense[]
+
+  @@index([organizationId])
+  @@index([organizationId, isActive])
+  @@map("branches")
+}
+
+// =============================================================================
+// RBAC — ROLES & PERMISSIONS
+// =============================================================================
+
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @unique @db.VarChar(100)
+  slug        String   @unique @db.VarChar(100)
+  description String?  @db.Text
+  isSystem    Boolean  @default(false) @map("is_system")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  users           User[]
+  rolePermissions RolePermission[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @unique @db.VarChar(100)
+  slug      String   @unique @db.VarChar(100)
+  module    String   @db.VarChar(50)
+  action    String   @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  rolePermissions RolePermission[]
+
+  @@index([module])
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String @id @default(uuid()) @db.Uuid
+  roleId       String @map("role_id") @db.Uuid
+  permissionId String @map("permission_id") @db.Uuid
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// =============================================================================
+// AUTH — USERS, SESSIONS, TOKENS
+// =============================================================================
+
+model User {
+  id             String     @id @default(uuid()) @db.Uuid
+  organizationId String?    @map("organization_id") @db.Uuid
+  branchId       String?    @map("branch_id") @db.Uuid
+  roleId         String     @map("role_id") @db.Uuid
+  name           String     @db.VarChar(255)
+  email          String     @unique @db.VarChar(255)
+  phone          String?    @db.VarChar(50)
+  passwordHash   String     @map("password_hash") @db.VarChar(255)
+  avatar         String?    @db.VarChar(500)
+  status         UserStatus @default(PENDING_VERIFICATION)
+  lastLogin      DateTime?  @map("last_login")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+  deletedAt      DateTime?  @map("deleted_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  branch       Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  role         Role          @relation(fields: [roleId], references: [id])
+
+  sessions               UserSession[]
+  refreshTokens          RefreshToken[]
+  incomesCreated         Income[]           @relation("IncomeCreatedBy")
+  incomesUpdated         Income[]           @relation("IncomeUpdatedBy")
+  expensesCreated        Expense[]          @relation("ExpenseCreatedBy")
+  expensesUpdated        Expense[]          @relation("ExpenseUpdatedBy")
+  auditLogs              AuditLog[]
+  notifications          Notification[]
+  approvalFlowsSubmitted ApprovalFlow[]     @relation("ApprovalSubmittedBy")
+  approvalFlowsCurrent   ApprovalFlow[]     @relation("ApprovalCurrentApprover")
+  approvalHistories      ApprovalHistory[]
+  budgetHistories        BudgetHistory[]
+  journalEntriesCreated  JournalEntry[]
+  attachmentsUploaded    Attachment[]
+  reportsGenerated       Report[]
+  syncLogs               SyncLog[]
+  passwordResetTokens    PasswordResetToken[]
+
+  @@index([organizationId])
+  @@index([organizationId, branchId])
+  @@index([organizationId, roleId])
+  @@index([status])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model UserSession {
+  id             String     @id @default(uuid()) @db.Uuid
+  userId         String     @map("user_id") @db.Uuid
+  organizationId String?    @map("organization_id") @db.Uuid
+  deviceId       String     @map("device_id") @db.VarChar(255)
+  deviceName     String?    @map("device_name") @db.VarChar(255)
+  deviceType     DeviceType @default(ANDROID) @map("device_type")
+  ipAddress      String?    @map("ip_address") @db.VarChar(45)
+  userAgent      String?    @map("user_agent") @db.Text
+  fcmToken       String?    @map("fcm_token") @db.VarChar(500)
+  isActive       Boolean    @default(true) @map("is_active")
+  lastActivityAt DateTime   @default(now()) @map("last_activity_at")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  expiresAt      DateTime   @map("expires_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  refreshTokens RefreshToken[]
+
+  @@index([userId, isActive])
+  @@index([deviceId])
+  @@index([expiresAt])
+  @@map("user_sessions")
+}
+
+model RefreshToken {
+  id                String    @id @default(uuid()) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  sessionId         String    @map("session_id") @db.Uuid
+  tokenHash         String    @unique @map("token_hash") @db.VarChar(255)
+  isRevoked         Boolean   @default(false) @map("is_revoked")
+  revokedAt         DateTime? @map("revoked_at")
+  replacedByTokenId String?   @map("replaced_by_token_id") @db.Uuid
+  createdAt         DateTime  @default(now()) @map("created_at")
+  expiresAt         DateTime  @map("expires_at")
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  session UserSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRevoked])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.VarChar(255)
+  isUsed    Boolean   @default(false) @map("is_used")
+  usedAt    DateTime? @map("used_at")
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isUsed])
+  @@map("password_reset_tokens")
+}
+
+// =============================================================================
+// CATEGORIES
+// =============================================================================
+
+model IncomeCategory {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(100)
+  slug           String   @db.VarChar(100)
+  icon           String?  @db.VarChar(50)
+  color          String?  @db.VarChar(20)
+  isDefault      Boolean  @default(false) @map("is_default")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  incomes      Income[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
+  @@map("income_categories")
+}
+
+model ExpenseCategory {
+  id             String   @id @default(uuid()) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  name           String   @db.VarChar(100)
+  slug           String   @db.VarChar(100)
+  icon           String?  @db.VarChar(50)
+  color          String?  @db.VarChar(20)
+  isDefault      Boolean  @default(false) @map("is_default")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  expenses     Expense[]
+  budgets      Budget[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, isActive])
+  @@map("expense_categories")
+}
+
+// =============================================================================
+// FINANCIAL TRANSACTIONS
+// =============================================================================
+
+model Income {
+  id              String            @id @default(uuid()) @db.Uuid
+  organizationId  String            @map("organization_id") @db.Uuid
+  branchId        String?           @map("branch_id") @db.Uuid
+  categoryId      String            @map("category_id") @db.Uuid
+  amount          Decimal           @db.Decimal(18, 2)
+  transactionDate DateTime          @map("transaction_date") @db.Date
+  sourceName      String?           @map("source_name") @db.VarChar(255)
+  description     String?           @db.Text
+  attachmentUrl   String?           @map("attachment_url") @db.VarChar(500)
+  latitude        Decimal?          @db.Decimal(10, 8)
+  longitude       Decimal?          @db.Decimal(11, 8)
+  syncStatus      SyncStatus        @default(SYNCED) @map("sync_status")
+  localId         String?           @map("local_id") @db.VarChar(100)
+  createdBy       String            @map("created_by") @db.Uuid
+  updatedBy       String?           @map("updated_by") @db.Uuid
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  deletedAt       DateTime?         @map("deleted_at")
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch        Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  category      IncomeCategory @relation(fields: [categoryId], references: [id])
+  creator       User           @relation("IncomeCreatedBy", fields: [createdBy], references: [id])
+  updater       User?          @relation("IncomeUpdatedBy", fields: [updatedBy], references: [id])
+  journalEntry  JournalEntry?  @relation("IncomeJournalEntry")
+  approvalFlow  ApprovalFlow?  @relation("IncomeApprovalFlow")
+
+  @@index([organizationId])
+  @@index([organizationId, transactionDate])
+  @@index([organizationId, branchId])
+  @@index([organizationId, categoryId])
+  @@index([organizationId, createdBy])
+  @@index([localId])
+  @@index([deletedAt])
+  @@map("incomes")
+}
+
+model Expense {
+  id              String            @id @default(uuid()) @db.Uuid
+  organizationId  String            @map("organization_id") @db.Uuid
+  branchId        String?           @map("branch_id") @db.Uuid
+  categoryId      String            @map("category_id") @db.Uuid
+  amount          Decimal           @db.Decimal(18, 2)
+  transactionDate DateTime          @map("transaction_date") @db.Date
+  vendorName      String?           @map("vendor_name") @db.VarChar(255)
+  description     String?           @db.Text
+  attachmentUrl   String?           @map("attachment_url") @db.VarChar(500)
+  status          TransactionStatus @default(DRAFT)
+  latitude        Decimal?          @db.Decimal(10, 8)
+  longitude       Decimal?          @db.Decimal(11, 8)
+  syncStatus      SyncStatus        @default(SYNCED) @map("sync_status")
+  localId         String?           @map("local_id") @db.VarChar(100)
+  createdBy       String            @map("created_by") @db.Uuid
+  updatedBy       String?           @map("updated_by") @db.Uuid
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  deletedAt       DateTime?         @map("deleted_at")
+
+  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch        Branch?         @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  category      ExpenseCategory @relation(fields: [categoryId], references: [id])
+  creator       User            @relation("ExpenseCreatedBy", fields: [createdBy], references: [id])
+  updater       User?           @relation("ExpenseUpdatedBy", fields: [updatedBy], references: [id])
+  journalEntry  JournalEntry?   @relation("ExpenseJournalEntry")
+  approvalFlow  ApprovalFlow?   @relation("ExpenseApprovalFlow")
+
+  @@index([organizationId])
+  @@index([organizationId, transactionDate])
+  @@index([organizationId, branchId])
+  @@index([organizationId, categoryId])
+  @@index([organizationId, status])
+  @@index([organizationId, createdBy])
+  @@index([localId])
+  @@index([deletedAt])
+  @@map("expenses")
+}
+
+// =============================================================================
+// BUDGET & FINANCIAL TARGET
+// =============================================================================
+
+model Budget {
+  id              String           @id @default(uuid()) @db.Uuid
+  organizationId  String           @map("organization_id") @db.Uuid
+  categoryId      String           @map("category_id") @db.Uuid
+  budgetAmount    Decimal          @map("budget_amount") @db.Decimal(18, 2)
+  usedAmount      Decimal          @default(0) @map("used_amount") @db.Decimal(18, 2)
+  remainingAmount Decimal          @map("remaining_amount") @db.Decimal(18, 2)
+  period          BudgetPeriod
+  startDate       DateTime         @map("start_date") @db.Date
+  endDate         DateTime         @map("end_date") @db.Date
+  alertLevel      BudgetAlertLevel @default(NORMAL) @map("alert_level")
+  isActive        Boolean          @default(true) @map("is_active")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category     ExpenseCategory @relation(fields: [categoryId], references: [id])
+  histories    BudgetHistory[]
+
+  @@index([organizationId])
+  @@index([organizationId, categoryId])
+  @@index([organizationId, period])
+  @@index([organizationId, startDate, endDate])
+  @@index([alertLevel])
+  @@map("budgets")
+}
+
+model BudgetHistory {
+  id              String   @id @default(uuid()) @db.Uuid
+  budgetId        String   @map("budget_id") @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  previousAmount  Decimal  @map("previous_amount") @db.Decimal(18, 2)
+  newAmount       Decimal  @map("new_amount") @db.Decimal(18, 2)
+  previousUsed    Decimal  @map("previous_used") @db.Decimal(18, 2)
+  newUsed         Decimal  @map("new_used") @db.Decimal(18, 2)
+  changeReason    String?  @map("change_reason") @db.VarChar(255)
+  changedBy       String   @map("changed_by") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  budget       Budget       @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  changer      User         @relation(fields: [changedBy], references: [id])
+
+  @@index([budgetId])
+  @@index([organizationId, createdAt])
+  @@map("budget_histories")
+}
+
+model Target {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  name           String       @db.VarChar(255)
+  targetAmount   Decimal      @map("target_amount") @db.Decimal(18, 2)
+  currentAmount  Decimal      @default(0) @map("current_amount") @db.Decimal(18, 2)
+  period         TargetPeriod
+  startDate      DateTime     @map("start_date") @db.Date
+  endDate        DateTime     @map("end_date") @db.Date
+  status         TargetStatus @default(IN_PROGRESS)
+  badgeEarned    Boolean      @default(false) @map("badge_earned")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([organizationId, endDate])
+  @@map("targets")
+}
+
+// =============================================================================
+// APPROVAL WORKFLOW
+// =============================================================================
+
+model ApprovalFlow {
+  id                String             @id @default(uuid()) @db.Uuid
+  organizationId    String             @map("organization_id") @db.Uuid
+  entityType        ApprovalEntityType @map("entity_type")
+  entityId          String             @map("entity_id") @db.Uuid
+  incomeId          String?            @unique @map("income_id") @db.Uuid
+  expenseId         String?            @unique @map("expense_id") @db.Uuid
+  status            TransactionStatus  @default(DRAFT)
+  submittedBy       String?            @map("submitted_by") @db.Uuid
+  currentApproverId String?            @map("current_approver_id") @db.Uuid
+  approvalLevel     Int                @default(0) @map("approval_level")
+  rejectionReason   String?            @map("rejection_reason") @db.Text
+  submittedAt       DateTime?          @map("submitted_at")
+  completedAt       DateTime?          @map("completed_at")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  updatedAt         DateTime           @updatedAt @map("updated_at")
+
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  submitter       User?             @relation("ApprovalSubmittedBy", fields: [submittedBy], references: [id])
+  currentApprover User?             @relation("ApprovalCurrentApprover", fields: [currentApproverId], references: [id])
+  histories       ApprovalHistory[]
+  income          Income?           @relation("IncomeApprovalFlow", fields: [incomeId], references: [id])
+  expense         Expense?          @relation("ExpenseApprovalFlow", fields: [expenseId], references: [id])
+
+  @@unique([entityType, entityId])
+  @@index([organizationId])
+  @@index([organizationId, status])
+  @@index([currentApproverId, status])
+  @@map("approval_flows")
+}
+
+model ApprovalHistory {
+  id             String             @id @default(uuid()) @db.Uuid
+  approvalFlowId String             @map("approval_flow_id") @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  actorId        String             @map("actor_id") @db.Uuid
+  action         ApprovalAction
+  fromStatus     TransactionStatus? @map("from_status")
+  toStatus       TransactionStatus  @map("to_status")
+  comment        String?            @db.Text
+  createdAt      DateTime           @default(now()) @map("created_at")
+
+  approvalFlow ApprovalFlow @relation(fields: [approvalFlowId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  actor        User         @relation(fields: [actorId], references: [id])
+
+  @@index([approvalFlowId])
+  @@index([organizationId, createdAt])
+  @@map("approval_histories")
+}
+
+// =============================================================================
+// AUDIT TRAIL
+// =============================================================================
+
+model AuditLog {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String?     @map("organization_id") @db.Uuid
+  userId         String      @map("user_id") @db.Uuid
+  action         AuditAction
+  entity         String      @db.VarChar(100)
+  entityId       String?     @map("entity_id") @db.Uuid
+  oldData        Json?       @map("old_data")
+  newData        Json?       @map("new_data")
+  ipAddress      String?     @map("ip_address") @db.VarChar(45)
+  userAgent      String?     @map("user_agent") @db.Text
+  latitude       Decimal?    @db.Decimal(10, 8)
+  longitude      Decimal?    @db.Decimal(11, 8)
+  createdAt      DateTime    @default(now()) @map("created_at")
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  user         User          @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
+
+// =============================================================================
+// NOTIFICATIONS
+// =============================================================================
+
+model Notification {
+  id             String              @id @default(uuid()) @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  userId         String              @map("user_id") @db.Uuid
+  title          String              @db.VarChar(255)
+  body           String              @db.Text
+  type           NotificationType
+  channel        NotificationChannel @default(IN_APP)
+  status         NotificationStatus  @default(UNREAD)
+  metadata       Json?
+  readAt         DateTime?           @map("read_at")
+  archivedAt     DateTime?           @map("archived_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+// =============================================================================
+// ATTACHMENTS & REPORTS
+// =============================================================================
+
+model Attachment {
+  id             String               @id @default(uuid()) @db.Uuid
+  organizationId String               @map("organization_id") @db.Uuid
+  entityType     AttachmentEntityType @map("entity_type")
+  entityId       String               @map("entity_id") @db.Uuid
+  fileName       String               @map("file_name") @db.VarChar(255)
+  mimeType       String               @map("mime_type") @db.VarChar(100)
+  fileSize       Int                  @map("file_size")
+  r2Key          String?              @map("r2_key") @db.VarChar(500)
+  url            String?              @db.VarChar(500)
+  localPath      String?              @map("local_path") @db.VarChar(500)
+  uploadStatus   UploadStatus         @default(PENDING) @map("upload_status")
+  uploadedBy     String               @map("uploaded_by") @db.Uuid
+  createdAt      DateTime             @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  uploader     User         @relation(fields: [uploadedBy], references: [id])
+
+  @@index([organizationId])
+  @@index([entityType, entityId])
+  @@index([uploadStatus])
+  @@map("attachments")
+}
+
+model Report {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  reportType     ReportType   @map("report_type")
+  period         BudgetPeriod
+  startDate      DateTime     @map("start_date") @db.Date
+  endDate        DateTime     @map("end_date") @db.Date
+  format         ReportFormat
+  fileUrl        String?      @map("file_url") @db.VarChar(500)
+  parameters     Json?
+  status         ReportStatus @default(PENDING)
+  generatedBy    String       @map("generated_by") @db.Uuid
+  createdAt      DateTime     @default(now()) @map("created_at")
+  completedAt    DateTime?    @map("completed_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  generator    User         @relation(fields: [generatedBy], references: [id])
+
+  @@index([organizationId, reportType])
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@index([status])
+  @@map("reports")
+}
+
+model SyncLog {
+  id             String    @id @default(uuid()) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  deviceId       String    @map("device_id") @db.VarChar(255)
+  itemsSynced    Int       @default(0) @map("items_synced")
+  itemsFailed    Int       @default(0) @map("items_failed")
+  details        Json?
+  startedAt      DateTime  @default(now()) @map("started_at")
+  completedAt    DateTime? @map("completed_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, startedAt(sort: Desc)])
+  @@index([userId, deviceId])
+  @@map("sync_logs")
+}
+
+// =============================================================================
+// DOUBLE-ENTRY ACCOUNTING
+// =============================================================================
+
+model ChartOfAccount {
+  id             String      @id @default(uuid()) @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  code           String      @db.VarChar(20)
+  name           String      @db.VarChar(255)
+  accountType    AccountType @map("account_type")
+  parentId       String?     @map("parent_id") @db.Uuid
+  level          Int         @default(1)
+  isActive       Boolean     @default(true) @map("is_active")
+  isSystem       Boolean     @default(false) @map("is_system")
+  balance        Decimal     @default(0) @db.Decimal(18, 2)
+  createdAt      DateTime    @default(now()) @map("created_at")
+  updatedAt      DateTime    @updatedAt @map("updated_at")
+
+  organization  Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  parent        ChartOfAccount? @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children      ChartOfAccount[] @relation("AccountHierarchy")
+  journalDetails JournalDetail[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, accountType])
+  @@index([organizationId, isActive])
+  @@map("chart_of_accounts")
+}
+
+model JournalEntry {
+  id             String            @id @default(uuid()) @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  entryNumber    String            @map("entry_number") @db.VarChar(50)
+  entryDate      DateTime          @map("entry_date") @db.Date
+  description    String?           @db.Text
+  sourceType     JournalSourceType @map("source_type")
+  sourceId       String?           @map("source_id") @db.Uuid
+  incomeId       String?           @unique @map("income_id") @db.Uuid
+  expenseId      String?           @unique @map("expense_id") @db.Uuid
+  status         JournalStatus     @default(DRAFT)
+  totalDebit     Decimal           @map("total_debit") @db.Decimal(18, 2)
+  totalCredit    Decimal           @map("total_credit") @db.Decimal(18, 2)
+  createdBy      String            @map("created_by") @db.Uuid
+  createdAt      DateTime          @default(now()) @map("created_at")
+  postedAt       DateTime?         @map("posted_at")
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator      User            @relation(fields: [createdBy], references: [id])
+  details      JournalDetail[]
+  income       Income?         @relation("IncomeJournalEntry", fields: [incomeId], references: [id])
+  expense      Expense?        @relation("ExpenseJournalEntry", fields: [expenseId], references: [id])
+
+  @@unique([organizationId, entryNumber])
+  @@index([organizationId, entryDate])
+  @@index([organizationId, sourceType, sourceId])
+  @@index([status])
+  @@map("journal_entries")
+}
+
+model JournalDetail {
+  id             String   @id @default(uuid()) @db.Uuid
+  journalEntryId String   @map("journal_entry_id") @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  accountId      String   @map("account_id") @db.Uuid
+  debit          Decimal  @default(0) @db.Decimal(18, 2)
+  credit         Decimal  @default(0) @db.Decimal(18, 2)
+  description    String?  @db.Text
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  journalEntry JournalEntry   @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  account      ChartOfAccount @relation(fields: [accountId], references: [id])
+
+  @@index([journalEntryId])
+  @@index([organizationId, accountId])
+  @@index([accountId])
+  @@map("journal_details")
+}
