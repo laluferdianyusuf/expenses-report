@@ -26,11 +26,12 @@
       "package": "com.fms.enterprise",
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "USE_BIOMETRIC",
-        "USE_FINGERPRINT",
-        "POST_NOTIFICATIONS",
-        "READ_EXTERNAL_STORAGE",
-        "READ_MEDIA_IMAGES"
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -76,9 +77,11 @@
       "typedRoutes": true
     },
     "extra": {
+      "router": {},
       "eas": {
-        "projectId": "your-eas-project-id"
+        "projectId": "d4aefea2-0b1a-4fe0-abbc-afee9f9cdc2f"
       }
-    }
+    },
+    "owner": "laluferdian"
   }
 }
